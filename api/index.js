@@ -1,9 +1,13 @@
 import express from 'express';
-import { reply } from '../services/line.js';
+import axios from 'axios';
 
 const app = express();
 
 app.use(express.json());
+
+const RABBITMQ_API_URL = process.env.RABBITMQ_API_URL;
+const RABBITMQ_USER = process.env.RABBITMQ_USER;
+const RABBITMQ_PASSWORD = process.env.RABBITMQ_PASSWORD;
 
 app.get('/', (req, res) => {
   res.sendStatus(200);
@@ -11,18 +15,27 @@ app.get('/', (req, res) => {
 
 app.post('/webhook', async (req, res) => {
   const events = req.body.events || [];
-  const replies = events
+  const tasks = events
     .filter(({ type }) => type === 'message')
-    .map(({ replyToken, message }) => reply({
-      replyToken,
-      messages: [
-        {
-          type: 'text',
-          text: message.text,
+    .map(async ({ replyToken, message }) => {
+      // Send message to RabbitMQ
+      await axios.post(RABBITMQ_API_URL, {
+        replyToken,
+        messages: [
+          {
+            type: 'text',
+            text: message.text,
+          },
+        ],
+      }, {
+        auth: {
+          username: RABBITMQ_USER,
+          password: RABBITMQ_PASSWORD,
         },
-      ],
-    }));
-  await Promise.all(replies);
+      });
+    });
+
+  await Promise.all(tasks);
   res.sendStatus(200);
 });
 
